@@ -1,10 +1,14 @@
-import { generateText } from 'ai'
-import { anthropic } from "@ai-sdk/anthropic";
+import { researchCustomer } from "./orchestrate.js";
 
+const customers = [
+  { name: "Anthropic" },
+  { name: "Notion", domain: "notion.so" },
+  { name: "Andela", domain: "andela.com" },
+  // add real customer names from the client's list here
+];
 
-const result = await generateText({
-    model: anthropic("claude-sonnet-4-6"),
-    prompt: "Say hello in one sentence.",
-})
-
-console.log(result.text)
+for (const customer of customers) {
+  const brief = await researchCustomer(customer.name, customer.domain);
+  console.log(`\n=== ${customer.name} ===`);
+  console.log(JSON.stringify(brief, null, 2));
+}
