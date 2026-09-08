@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Customer Research Agent</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e6e8ec;
+    --muted: #8b93a3;
+    --accent: #6ea8fe;
+    --good: #4caf7d;
+    --warn: #e0a94f;
+    --bad: #e0605f;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    min-height: 100vh;
+  }
+  aside {
+    border-right: 1px solid var(--border);
+    padding: 20px;
+    overflow-y: auto;
+  }
+  main {
+    padding: 28px 36px;
+    overflow-y: auto;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+  form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+  label { font-size: 12px; color: var(--muted); }
+  input {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  button {
+    background: var(--accent);
+    color: #0f1115;
+    border: none;
+    padding: 9px 14px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .history-item {
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+  }
+  .history-item:hover { background: var(--panel-2); }
+  .history-item.active { background: var(--panel-2); border-color: var(--accent); }
+  .history-name { font-size: 13px; font-weight: 600; }
+  .history-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 2px 6px;
+    border-radius: 999px;
+    margin-left: 6px;
+  }
+  .badge.queued, .badge.running { background: #33405a; color: var(--accent); }
+  .badge.done { background: #1f3a2c; color: var(--good); }
+  .badge.error { background: #3a2323; color: var(--bad); }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .panel h2 { font-size: 14px; margin: 0 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .field-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 24px; }
+  .field-grid div span.label { display: block; font-size: 11px; color: var(--muted); }
+  .field-grid div span.value { font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; }
+  .relevance { font-size: 11px; padding: 2px 6px; border-radius: 999px; }
+  .relevance.high { background: #3a2323; color: var(--bad); }
+  .relevance.medium { background: #3a3423; color: var(--warn); }
+  .relevance.low { background: #23343a; color: var(--muted); }
+  .summary { font-size: 14px; line-height: 1.5; }
+  .timing { margin-top: 8px; font-size: 13px; color: var(--accent); }
+  .issue-list { margin: 0; padding-left: 18px; font-size: 13px; color: var(--warn); }
+  .issue-list.ok { color: var(--good); }
+  .sources { font-size: 12px; color: var(--muted); word-break: break-all; }
+  .sources a { color: var(--accent); text-decoration: none; }
+  .empty { color: var(--muted); font-size: 14px; }
+  .status-line { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+  .top-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .download-link { font-size: 13px; color: var(--accent); text-decoration: none; }
+  .error-text { color: var(--bad); font-size: 13px; white-space: pre-wrap; }
+  .score { font-weight: 600; }
+</style>
+</head>
+<body>
+  <aside>
+    <h1>Customer Research Agent</h1>
+    <p class="sub">Firmographics + signals + synthesis, on demand.</p>
+
+    <form id="research-form">
+      <div>
+        <label for="customerName">Customer name</label><br />
+        <input id="customerName" name="customerName" placeholder="e.g. Acme Corp" required style="width:100%" />
+      </div>
+      <div>
+        <label for="domain">Domain (optional)</label><br />
+        <input id="domain" name="domain" placeholder="e.g. acme.com" style="width:100%" />
+      </div>
+      <button id="submit-btn" type="submit">Run research</button>
+    </form>
+
+    <h2 style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">History</h2>
+    <div id="history-list"><p class="empty">Loading…</p></div>
+  </aside>
+
+  <main>
+    <div id="content"><p class="empty">Run a customer, or pick one from history, to see a brief here.</p></div>
+  </main>
+
+<script>
+const API = "/api/research";
+let activeId = null;
+let pollTimer = null;
+
+const historyList = document.getElementById("history-list");
+const content = document.getElementById("content");
+const form = document.getElementById("research-form");
+const submitBtn = document.getElementById("submit-btn");
+
+function fmtDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+async function loadHistory() {
+  const res = await fetch(API);
+  const jobs = await res.json();
+  if (!jobs.length) {
+    historyList.innerHTML = '<p class="empty">No runs yet.</p>';
+    return;
+  }
+  historyList.innerHTML = jobs.map(job => `
+    <div class="history-item ${job.id === activeId ? 'active' : ''}" data-id="${job.id}">
+      <div class="history-name">${escapeHtml(job.customerName)}<span class="badge ${job.status}">${job.status}</span></div>
+      <div class="history-meta">${fmtDate(job.createdAt)}</div>
+    </div>
+  `).join("");
+  historyList.querySelectorAll(".history-item").forEach(el => {
+    el.addEventListener("click", () => selectJob(el.dataset.id));
+  });
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function relevanceBadge(rel) {
+  return `<span class="relevance ${rel}">${rel}</span>`;
+}
+
+function renderLoading(customerName, status) {
+  content.innerHTML = `
+    <div class="panel">
+      <div class="top-row"><h2 style="margin:0;text-transform:none;color:var(--text);font-size:16px;">${escapeHtml(customerName)}</h2></div>
+      <p class="status-line">${status === "queued" ? "Queued…" : "Researching — this usually takes 20-60 seconds…"}</p>
+    </div>
+  `;
+}
+
+function renderError(customerName, error) {
+  content.innerHTML = `
+    <div class="panel">
+      <div class="top-row"><h2 style="margin:0;text-transform:none;color:var(--text);font-size:16px;">${escapeHtml(customerName)}</h2></div>
+      <p class="error-text">Research failed: ${escapeHtml(error)}</p>
+    </div>
+  `;
+}
+
+function renderResult(job) {
+  const { brief, quality } = job.result;
+  const fg = brief.firmographics;
+
+  const signalsRows = brief.recentSignals.map(s => `
+    <tr>
+      <td>${escapeHtml(s.date)}</td>
+      <td>${escapeHtml(s.headline)}</td>
+      <td>${escapeHtml(s.source)}</td>
+      <td>${relevanceBadge(s.relevance)}</td>
+    </tr>
+  `).join("");
+
+  const groundingWarning = brief.groundingWarning?.length
+    ? `<p class="error-text">⚠ Unverified date(s) in synthesis: ${brief.groundingWarning.map(escapeHtml).join(", ")}</p>`
+    : "";
+
+  const qualityIssues = [...(quality.groundingIssues || []), ...(quality.sourceUrlIssues || [])];
+  const qualityHtml = qualityIssues.length
+    ? `<ul class="issue-list">${qualityIssues.map(i => `<li>${escapeHtml(i)}</li>`).join("")}</ul>`
+    : `<p class="issue-list ok">No grounding or source-URL issues found.</p>`;
+
+  const sourcesHtml = brief.sourcesUsed.map(u =>
+    `<div><a href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a></div>`
+  ).join("");
+
+  content.innerHTML = `
+    <div class="panel">
+      <div class="top-row">
+        <h2 style="margin:0;text-transform:none;color:var(--text);font-size:16px;">${escapeHtml(brief.customerName)}${brief.domain ? ` · ${escapeHtml(brief.domain)}` : ""}</h2>
+        <a class="download-link" href="${API}/${job.id}/export">⬇ Download .xlsx</a>
+      </div>
+      ${groundingWarning}
+    </div>
+
+    <div class="panel">
+      <h2>Firmographics</h2>
+      <div class="field-grid">
+        <div><span class="label">Industry</span><span class="value">${escapeHtml(fg.industry)}</span></div>
+        <div><span class="label">Employees</span><span class="value">${escapeHtml(fg.employeeCountEstimate)}</span></div>
+        <div><span class="label">Headquarters</span><span class="value">${escapeHtml(fg.headquarters || "—")}</span></div>
+        <div><span class="label">Funding stage</span><span class="value">${escapeHtml(fg.fundingStage || "—")}</span></div>
+        <div style="grid-column:1/-1;"><span class="label">Tech stack</span><span class="value">${(fg.techStackHighlights || []).map(escapeHtml).join(", ") || "—"}</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Recent signals</h2>
+      ${brief.recentSignals.length
+        ? `<table><thead><tr><th>Date</th><th>Headline</th><th>Source</th><th>Relevance</th></tr></thead><tbody>${signalsRows}</tbody></table>`
+        : '<p class="empty">No signals found.</p>'}
+    </div>
+
+    <div class="panel">
+      <h2>Why this matters</h2>
+      <p class="summary">${escapeHtml(brief.synthesis.summary)}</p>
+      ${brief.synthesis.suggestedTiming ? `<p class="timing">Suggested timing: ${escapeHtml(brief.synthesis.suggestedTiming)}</p>` : ""}
+    </div>
+
+    <div class="panel">
+      <h2>Quality check <span class="score">(${Math.round(quality.completenessScore * 100)}% complete)</span></h2>
+      ${qualityHtml}
+    </div>
+
+    <div class="panel">
+      <h2>Sources</h2>
+      <div class="sources">${sourcesHtml || "—"}</div>
+    </div>
+  `;
+}
+
+async function selectJob(id) {
+  activeId = id;
+  clearInterval(pollTimer);
+  await refreshJob(id, true);
+  loadHistory();
+}
+
+async function refreshJob(id, isInitialSelect) {
+  const res = await fetch(`${API}/${id}`);
+  if (!res.ok) return;
+  const job = await res.json();
+
+  if (job.status === "queued" || job.status === "running") {
+    renderLoading(job.customerName, job.status);
+    if (isInitialSelect || !pollTimer) {
+      pollTimer = setInterval(() => refreshJob(id, false), 3000);
+    }
+    return;
+  }
+
+  clearInterval(pollTimer);
+  pollTimer = null;
+
+  if (job.status === "done") {
+    renderResult(job);
+  } else if (job.status === "error") {
+    renderError(job.customerName, job.error);
+  }
+  loadHistory();
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const customerName = document.getElementById("customerName").value.trim();
+  const domain = document.getElementById("domain").value.trim();
+  if (!customerName) return;
+
+  submitBtn.disabled = true;
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerName, domain: domain || undefined }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Request failed (${res.status})`);
+    }
+    const { id } = await res.json();
+    form.reset();
+    await selectJob(id);
+  } catch (err) {
+    content.innerHTML = `<div class="panel"><p class="error-text">${escapeHtml(err.message)}</p></div>`;
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+loadHistory();
+</script>
+</body>
+</html>

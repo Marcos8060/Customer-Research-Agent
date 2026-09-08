@@ -29,15 +29,23 @@ The Vercel AI SDK was chosen because it gives strict control over output shape v
 
 ```
 src/
-  schema.ts               # Zod schema — the output contract for a customer brief
+  schema.ts                # Zod schema — the output contract for a customer brief
   tools/
-    firmographics.ts      # Tavily-backed tool for company facts
-    signals.ts             # Tavily-backed tool for recent news/signals
+    firmographics.ts       # Tavily-backed tool for company facts
+    signals.ts              # Tavily-backed tool for recent news/signals
   agents/
-    firmographicsAgent.ts # research subagent
-    signalsAgent.ts        # research subagent
-    synthesizer.ts          # combines both into the final brief
-  index.ts                 # Entry point / orchestration
+    firmographicAgent.ts   # research subagent
+    signalsAgent.ts         # research subagent
+    synthesizer.ts           # combines both into the final brief
+  orchestrate.ts            # runs both agents in parallel, synthesizes, grounding check
+  evaluate.ts                # post-hoc QA pass: grounding, dead-source-URL check, completeness score
+  export.ts                  # writes brief(s) to an .xlsx workbook
+  db.ts                      # SQLite (node:sqlite) persistence for web app jobs
+  jobQueue.ts                # tiny in-process concurrency-limited queue for the web app
+  index.ts                   # CLI entry point — batch-researches a hardcoded customer list
+  server.ts                  # web app entry point — HTTP API + serves public/
+public/
+  index.html                 # single-page vanilla JS/HTML frontend for the web app
 ```
 
 ## Setup
@@ -74,3 +82,30 @@ Every customer brief is validated against `customerBriefSchema` (`src/schema.ts`
 - `recentSignals` — array of `{ date, headline, source, relevance }`
 - `synthesis` — a short summary and suggested outreach timing
 - `sourcesUsed` — URLs behind every claim, for trust and verification
+
+## Web app (internal tool)
+
+Beyond the CLI batch script, there's a small internal web app so teammates can request a brief for any customer on demand instead of editing `index.ts`.
+
+Run it with:
+
+```bash
+pnpm run serve
+```
+
+This starts an HTTP server (default port `3001`, override with `PORT=...`) that serves a single-page frontend at `http://localhost:3001` and exposes:
+
+| Endpoint | What it does |
+|---|---|
+| `POST /api/research` | Body `{ customerName, domain? }`. Kicks off a research job in the background and returns `{ id }` immediately — a brief takes 20-60+ seconds, so the request doesn't block on it. |
+| `GET /api/research/:id` | Poll a job's status (`queued` \| `running` \| `done` \| `error`) and result. |
+| `GET /api/research` | Recent job history, for the sidebar list. |
+| `GET /api/research/:id/export` | Downloads that one completed brief as an `.xlsx`, reusing `export.ts`. |
+
+Design notes:
+
+- **Jobs run through a small in-process queue** (`jobQueue.ts`, concurrency 2) so multiple teammates hitting "run" at once don't all fire Tavily + Anthropic calls simultaneously. This is single-instance only — deploying more than one server process would need a real shared queue instead.
+- **Results persist in SQLite** (`db.ts`, via Node's built-in `node:sqlite` — no native module/compile step needed) in `briefs.db` at the project root, so history survives a restart. It's gitignored; delete it any time to reset history.
+- **No auth yet.** This is meant to run somewhere only your team can reach (e.g. behind a VPN or on localhost) — add auth before exposing it more broadly.
+- **No rate/cost limiting beyond the queue.** Each brief costs real Anthropic + Tavily usage; keep an eye on spend if this gets shared with more people.
+
